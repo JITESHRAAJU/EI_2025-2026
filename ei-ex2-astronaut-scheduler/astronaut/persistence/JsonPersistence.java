@@ -9,32 +9,48 @@ import java.time.LocalTime;
 import java.util.List;
 
 public class JsonPersistence {
-    private static final Gson GSON = new GsonBuilder()
+
+    // keeping a single Gson instance around (thread-safe afaik)
+    private static final Gson gson = new GsonBuilder()
+            // had to write custom adapters since LocalTime doesn’t serialize nicely by default
             .registerTypeAdapter(LocalTime.class, new JsonSerializer<LocalTime>() {
                 @Override
-                public JsonElement serialize(LocalTime src, Type typeOfSrc, JsonSerializationContext context) {
-                    return new JsonPrimitive(src.toString());
+                public JsonElement serialize(LocalTime time, Type typeOfSrc, JsonSerializationContext ctx) {
+                    // LocalTime -> String
+                    return new JsonPrimitive(time.toString());
                 }
             })
             .registerTypeAdapter(LocalTime.class, new JsonDeserializer<LocalTime>() {
                 @Override
-                public LocalTime deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context)
+                public LocalTime deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext ctx)
                         throws JsonParseException {
+                    // String -> LocalTime
                     return LocalTime.parse(json.getAsString());
                 }
             })
-            .setPrettyPrinting()
+            .setPrettyPrinting()  // mainly for readability, could turn off for performance later
             .create();
 
+    // saves a list of tasks to a JSON file
     public static void save(List<Task> tasks, File file) throws IOException {
-        try (Writer w = new FileWriter(file)) {
-            GSON.toJson(tasks, w);
+        // Using try-with-resources so we don’t forget to close the writer
+        try (Writer writer = new FileWriter(file)) {
+            gson.toJson(tasks, writer);
+            // NOTE: maybe add a flush() here explicitly, but writer.close() should handle it
         }
     }
 
+    // loads tasks back from file; returns an array (could consider List<Task> instead)
     public static Task[] load(File file) throws IOException {
-        try (Reader r = new FileReader(file)) {
-            return GSON.fromJson(r, Task[].class);
+        if (!file.exists()) {
+            // rather than failing, just return empty set for convenience
+            return new Task[0];
+        }
+        try (Reader reader = new FileReader(file)) {
+            return gson.fromJson(reader, Task[].class);
         }
     }
+
+    // Future idea: add append/saveSingleTask methods instead of rewriting the whole list each time
+    // Might make sense if tasks get large
 }
